@@ -24,7 +24,6 @@ Controle total e intuitivo das operações da sua barbearia:
 
 ### 💇 Serviços e Produtos
 * Cadastro e gerenciamento de serviços (corte, barba, tratamentos, etc.).
-* **Controle de produtos** vendidos e em estoque.
 * Gestão de preços.
 
 ### 💰 Gestão Financeira
