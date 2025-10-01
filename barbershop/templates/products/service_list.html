@@ -1,0 +1,94 @@
+{% extends 'products/base.html' %}
+
+{% block title %}Serviços do Dia{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Serviços de {{ selected_date|date:"d/m/Y" }}</h2>
+    <div>
+        <a href="{% url 'barbershop:add_service' %}" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Novo Serviço</a>
+    </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-center">
+            <div class="col-auto">
+                <label for="filter_date" class="form-label">Filtrar por data:</label>
+                <input type="date" name="filter_date" id="filter_date" class="form-control" value="{{ filter_date_str }}">
+            </div>
+            <div class="col-auto mt-4">
+                <button type="submit" class="btn btn-secondary">Filtrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Horário</th>
+                        <th>Cliente</th>
+                        <th>Serviço</th>
+                        <th>Preço</th>
+                        <th>Status</th>
+                        <th class="text-end">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for service in services %}
+                    <tr>
+                        <td>{{ service.appointment_datetime|time:"H:i" }}</td>
+                        <td>{{ service.client_name }}</td>
+                        <td>
+                            {% for st in service.service_types.all %}
+                                {{ st.name }}{% if not forloop.last %}, {% endif %}
+                            {% endfor %}
+                        </td>
+                        <td>R$ {{ service.price|floatformat:2 }}</td>
+                        <td>
+                            {% if service.payment_date %}
+                                <span class="badge bg-success">Pago</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Pendente</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            {% if not service.payment_date %}
+                            <form action="{% url 'barbershop:mark_as_paid' service.pk %}" method="post" class="d-inline">
+                                {% csrf_token %}
+                                <select name="payment_method" class="form-select form-select-sm d-inline w-auto">
+                                    {% for value, name in payment_choices %}
+                                    <option value="{{ value }}">{{ name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-success" title="Marcar como Pago">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            </form>
+                            <a href="{% url 'barbershop:edit_service' service.pk %}" class="btn btn-sm btn-info" title="Editar"><i class="bi bi-pencil"></i></a>
+                            {% endif %}
+                            
+                            <form action="{% url 'barbershop:delete_service' service.pk %}" method="post" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir este serviço?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-danger" title="Excluir"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            Nenhum serviço agendado para esta data.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,19 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Barbearia{% endblock %}</title>
+
+    <!-- Tailwind CSS via Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="{% static 'barbershop/css/sidebar.css' %}">
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    {% block content %}
+    {% endblock %}
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Arquivos de cache do Python
+__pycache__/
+*.pyc
+
+# Banco de dados local
+db.sqlite3
+db.sqlite3-journal
+
+# Arquivos de ambiente virtual
+.venv
+venv/
+env/
+ENV/
+
+# Arquivos do VS Code
+.vscode/
+
+# Chave secreta e configurações locais (Boas práticas)
+local_settings.py
+.env

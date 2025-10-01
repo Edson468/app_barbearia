@@ -1,0 +1,151 @@
+{% extends 'products/base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}Agendamento — Barbearia{% endblock %}
+
+{% block content %}
+  <div class="max-w-4xl mx-auto">
+    <div class="bg-white shadow-md rounded-lg overflow-hidden">
+      <div class="px-6 py-4">
+        <h4 class="text-xl font-bold text-gray-800 mb-4">Agendamento</h4>
+        <form method="post">
+          {% csrf_token %}
+          
+          <!-- Campos não relacionados aos serviços dinâmicos -->
+          <div class="mb-4">
+            <label for="{{ form.client_name.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">{{ form.client_name.label }}</label>
+            {{ form.client_name|add_class:"shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"|attr:"list:client-list" }}
+            <datalist id="client-list">
+              {% for client in clients %}<option value="{{ client.name }}">{% endfor %}
+            </datalist>
+            {% if form.client_name.errors %}<p class="text-red-500 text-xs italic mt-2">{{ form.client_name.errors|striptags }}</p>{% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label for="{{ form.appointment_datetime.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">{{ form.appointment_datetime.label }}</label>
+            {{ form.appointment_datetime|add_class:"shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            {% if form.appointment_datetime.errors %}<p class="text-red-500 text-xs italic mt-2">{{ form.appointment_datetime.errors|striptags }}</p>{% endif %}
+          </div>
+
+          <div class="mb-4">
+            <label for="{{ form.barber.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">{{ form.barber.label }}</label>
+            {{ form.barber|add_class:"shadow-sm appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            {% if form.barber.errors %}<p class="text-red-500 text-xs italic mt-2">{{ form.barber.errors|striptags }}</p>{% endif %}
+          </div>
+
+          <!-- Seção de Serviços Dinâmicos -->
+          <div class="border-t pt-4 mt-4">
+            <div class="flex justify-between items-center mb-2">
+                <h5 class="text-lg font-bold text-gray-800">Serviços</h5>
+            </div>
+            <div id="services-container">
+                <!-- O JavaScript irá inserir os campos de serviço aqui -->
+            </div>
+            <div class="flex justify-end mt-2">
+                <button type="button" id="add-service-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-lg text-sm">+ Adicionar Serviço</button>
+            </div>
+            {% if form.service_types.errors %}<p class="text-red-500 text-xs italic mt-2">{{ form.service_types.errors|striptags }}</p>{% endif %}
+          </div>
+
+          <!-- Seção de Total e Desconto -->
+          <div class="border-t pt-4 mt-4 space-y-4">
+            <div class="flex justify-end items-center">
+                <label for="{{ form.discount.id_for_label }}" class="text-gray-700 text-sm font-bold mr-2">{{ form.discount.label }}:</label>
+                {{ form.discount|add_class:"shadow-sm border rounded w-32 py-2 px-3 text-gray-700 text-right"|attr:"id:discount-input" }}
+            </div>
+            <div class="flex justify-end items-center text-xl font-bold">
+                <span class="text-gray-800 mr-2">Valor Total:</span>
+                <span id="total-price" class="text-green-600">R$ 0,00</span>
+            </div>
+          </div>
+
+          <div class="flex justify-end mt-6">
+            <a href="{% url 'barbershop:service_list' %}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded mr-2">Cancelar</a>
+            <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Salvar</button>
+          </div>
+          <!-- Campo oculto para o Django -->
+          <div style="display: none;">{{ form.service_types }}</div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {{ service_types_prices|json_script:"service-prices" }}
+  {{ all_services|json_script:"all-services" }}
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const servicePrices = JSON.parse(document.getElementById('service-prices').textContent);
+      const allServices = JSON.parse(document.getElementById('all-services').textContent);
+      const serviceOptions = Object.entries(servicePrices).map(([id, price]) => {
+          const service = allServices.find(s => s.pk == id);
+          return `<option value="${id}" data-price="${price}">${service ? service.name : ''}</option>`;
+      }).join('');
+
+      const container = document.getElementById('services-container');
+      const addServiceBtn = document.getElementById('add-service-btn');
+      const discountInput = document.getElementById('discount-input');
+      const totalPriceEl = document.getElementById('total-price');
+      const hiddenSelect = document.getElementById('id_service_types');
+
+      function createServiceRow() {
+        const div = document.createElement('div');
+        div.className = 'flex items-center space-x-2 mb-2 service-row';
+        div.innerHTML = `
+          <select class="service-select shadow-sm border rounded w-full py-2 px-3 text-gray-700">
+            <option value="">Selecione um serviço...</option>
+            ${serviceOptions}
+          </select>
+          <input type="text" class="service-price shadow-sm border rounded w-32 py-2 px-3 text-gray-700 text-right bg-gray-100" readonly>
+          <button type="button" class="remove-service-btn text-red-500 hover:text-red-700 font-bold">X</button>
+        `;
+        container.appendChild(div);
+      }
+
+      function updateTotals() {
+        let total = 0;
+        const selectedServiceIds = [];
+        document.querySelectorAll('.service-row').forEach(row => {
+          const select = row.querySelector('.service-select');
+          const selectedOption = select.options[select.selectedIndex];
+          if (selectedOption && selectedOption.value) {
+            total += parseFloat(selectedOption.dataset.price || 0);
+            selectedServiceIds.push(selectedOption.value);
+          }
+        });
+
+        const discount = parseFloat(discountInput.value) || 0;
+        const finalTotal = total - discount;
+        totalPriceEl.textContent = `R$ ${finalTotal.toFixed(2).replace('.', ',')}`;
+
+        // Sincroniza com o select múltiplo oculto do Django
+        Array.from(hiddenSelect.options).forEach(option => {
+            option.selected = selectedServiceIds.includes(option.value);
+        });
+      }
+
+      addServiceBtn.addEventListener('click', createServiceRow);
+
+      container.addEventListener('change', e => {
+        if (e.target.classList.contains('service-select')) {
+          const selectedOption = e.target.options[e.target.selectedIndex];
+          const price = selectedOption.dataset.price || '0.00';
+          e.target.closest('.service-row').querySelector('.service-price').value = `R$ ${parseFloat(price).toFixed(2)}`;
+          updateTotals();
+        }
+      });
+
+      container.addEventListener('click', e => {
+        if (e.target.classList.contains('remove-service-btn')) {
+          e.target.closest('.service-row').remove();
+          updateTotals();
+        }
+      });
+
+      discountInput.addEventListener('input', updateTotals);
+
+      // Adiciona a primeira linha de serviço ao carregar a página
+      createServiceRow();
+    });
+  </script>
+{% endblock %}
