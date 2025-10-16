@@ -2,6 +2,7 @@
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone # NOVO: Necessário para a data padrão da despesa
 
 # Opções para a forma de pagamento
 PAYMENT_CHOICES = [
@@ -30,16 +31,12 @@ class ServiceType(models.Model):
 
 class Service(models.Model):
     client_name = models.CharField(max_length=100, verbose_name="Nome do Cliente")
-    # Alterado para ManyToManyField para suportar múltiplos serviços por agendamento
     service_types = models.ManyToManyField(ServiceType, related_name='appointments', verbose_name="Tipos de Serviço")
-    # Relação com o User (barbeiro)
     barber = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='services') 
-    # O preço final é o total dos serviços menos o desconto.
     price = models.DecimalField(max_digits=6, decimal_places=2, verbose_name="Preço Final")
     discount = models.DecimalField(max_digits=6, decimal_places=2, default=0.00, verbose_name="Desconto (R$)")
     appointment_datetime = models.DateTimeField(null=True, blank=True)
     
-    # Campos de Pagamento (null=True é essencial para agendamentos não pagos)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, null=True, blank=True)
     payment_date = models.DateTimeField(null=True, blank=True) 
     
@@ -48,3 +45,22 @@ class Service(models.Model):
 
     def __str__(self):
         return f"Serviço para {self.client_name} em {self.appointment_datetime}"
+
+# ----------------------------------------------------------------------
+# NOVO MODELO: Despesas da Barbearia
+# ----------------------------------------------------------------------
+class Expense(models.Model):
+    """Modelo para registrar despesas operacionais da barbearia."""
+    description = models.CharField(max_length=255, verbose_name="Descrição da Despesa")
+    # Usa max_digits=10 para um limite de valor mais seguro
+    value = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Valor Retirado (R$)") 
+    # Usa DateField para registrar a data da despesa (necessário para filtro no caixa)
+    expense_date = models.DateField(default=timezone.now, verbose_name="Data da Despesa") 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Despesa: {self.description} - R${self.value}"
+
+    class Meta:
+        # Ordena as despesas da mais recente para a mais antiga por padrão
+        ordering = ['-expense_date']

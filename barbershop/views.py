@@ -12,8 +12,10 @@ from django.db.models import Sum, Count # CRÍTICO: Necessário para a lógica d
 from urllib.parse import urlencode
 from django.http import HttpResponse
 import csv
-from .models import Service, Client, ServiceType, PAYMENT_CHOICES
-from .forms import ServiceForm, ClientForm, BarberCreationForm, ServiceTypeForm
+# ALTERAÇÃO CRÍTICA: Incluir Expense e ExpenseForm nas importações
+from .models import Service, Client, ServiceType, PAYMENT_CHOICES, Expense 
+from .forms import ServiceForm, ClientForm, BarberCreationForm, ServiceTypeForm, ExpenseForm 
+
 
 # Funções de Autenticação
 # ----------------------------------------------------------------------
@@ -231,6 +233,25 @@ def add_barber(request):
     return render(request, 'barbershop/add_barber.html', {'form': form})
 
 
+# Funções de Despesa (NOVO)
+# ----------------------------------------------------------------------
+@login_required
+def add_expense(request):
+    """Adiciona uma nova despesa no sistema."""
+    if request.method == 'POST':
+        form = ExpenseForm(request.POST)
+        if form.is_valid():
+            form.save()
+            # Redireciona para o caixa do dia da despesa
+            redirect_url = f"{reverse('barbershop:daily_cashier')}?filter_date={form.cleaned_data['expense_date'].strftime('%Y-%m-%d')}"
+            return redirect(redirect_url)
+    else:
+        # Define a data atual como padrão no formulário
+        form = ExpenseForm(initial={'expense_date': timezone.now().date()})
+    
+    return render(request, 'barbershop/add_expense.html', {'form': form})
+
+
 # Funções de Pagamento e Caixa
 # ----------------------------------------------------------------------
 @login_required
@@ -251,8 +272,8 @@ def mark_as_paid(request, pk):
     return redirect('barbershop:service_list')
 
 
-def _get_filtered_cashier_services(request):
-    """Função auxiliar para obter serviços de caixa filtrados."""
+def _get_filtered_cashier_transactions(request):
+    """Função auxiliar para obter serviços (receitas) E despesas (saídas) filtrados."""
     
     filter_date = request.GET.get('filter_date', '').strip()
     filter_month = request.GET.get('filter_month', '').strip()
@@ -262,19 +283,25 @@ def _get_filtered_cashier_services(request):
     
     has_filters = any([filter_date, filter_month, filter_service_type, filter_payment_method, filter_barber])
     
-    # Seleciona os serviços e seus respectivos barbeiros para otimizar a consulta
+    # Base Query para RECEITAS (Serviços Pagos)
     services_query = Service.objects.prefetch_related('service_types').select_related('barber').filter(payment_date__isnull=False)
+    # Base Query para DESPESAS
+    expenses_query = Expense.objects.all()
 
+    # Aplica Filtros de Data
     if has_filters:
         if filter_date:
             services_query = services_query.filter(payment_date__date=filter_date)
+            expenses_query = expenses_query.filter(expense_date=filter_date)
         elif filter_month:
             try:
                 year, month = map(int, filter_month.split('-'))
                 services_query = services_query.filter(payment_date__year=year, payment_date__month=month)
+                expenses_query = expenses_query.filter(expense_date__year=year, expense_date__month=month)
             except ValueError:
                 pass
         
+        # Filtros de Serviço/Pagamento/Barbeiro só se aplicam a serviços
         if filter_service_type:
             services_query = services_query.filter(service_types__id=filter_service_type)
 
@@ -284,30 +311,70 @@ def _get_filtered_cashier_services(request):
         if filter_payment_method:
             services_query = services_query.filter(payment_method=filter_payment_method)
     else:
-        # Padrão: serviços pagos hoje
+        # Padrão: receitas e despesas de hoje
         today = timezone.now().date()
         services_query = services_query.filter(payment_date__date=today)
+        expenses_query = expenses_query.filter(expense_date=today)
 
-    return services_query.order_by('-payment_date')
+    return services_query, expenses_query # Retorna dois QuerySets
 
 
 @login_required
 def daily_cashier(request):
     
-    services_today = _get_filtered_cashier_services(request)
+    # Obtém Receitas (services) e Despesas (expenses)
+    services_query, expenses_query = _get_filtered_cashier_transactions(request)
+
+    # 1. Cálculo de Totais
+    income_aggregation = services_query.aggregate(total_income=Sum('price'), total_services=Count('id'))
+    total_income = income_aggregation.get('total_income') or 0
+    total_services = income_aggregation.get('total_services') or 0
+
+    outcome_aggregation = expenses_query.aggregate(total_outcome=Sum('value'))
+    total_outcome = outcome_aggregation.get('total_outcome') or 0
+
+    # Total Líquido (Receitas - Despesas)
+    final_total_value = total_income - total_outcome
+
+    # 2. Combinação e Formatação para Display
+    # Formata Receitas (valor positivo)
+    services_list = [{
+        'description': f"Receita: {s.client_name} - {', '.join([st.name for st in s.service_types.all()])}",
+        'value': s.price,
+        'is_expense': False,
+        'barber': s.barber.username if s.barber else 'N/A',
+        'payment_method': s.get_payment_method_display(),
+        'date': s.payment_date.date(),
+        'sort_time': s.payment_date 
+    } for s in services_query]
+
+    # Formata Despesas (valor negativo)
+    expenses_list = [{
+        'description': f"DESPESA: {e.description}",
+        'value': -e.value, # Valor negativo
+        'is_expense': True,
+        'barber': 'N/A',
+        'payment_method': 'N/A',
+        'date': e.expense_date,
+        # Cria um datetime para ordenação uniforme com as receitas
+        'sort_time': timezone.make_aware(datetime.combine(e.expense_date, datetime.min.time())) 
+    } for e in expenses_query]
     
-    aggregation = services_today.aggregate(total_value=Sum('price'), total_services=Count('id'))
-    total_value = aggregation.get('total_value') or 0
-    total_services = aggregation.get('total_services') or 0
+    # Combina e ordena todas as transações (Receitas e Despesas) pela data/hora
+    transactions_list = services_list + expenses_list
+    transactions_list.sort(key=lambda x: x['sort_time'], reverse=True)
 
     context = {
-        'services_today': services_today,
-        'total_value': total_value,
-        'total_services': total_services,
+        'transactions': transactions_list, # Nova lista combinada
+        'total_value': final_total_value, # Total Líquido
+        'total_income': total_income,     # Total de Receitas
+        'total_outcome': total_outcome,   # Total de Despesas
+        'total_services': total_services, # Total de serviços (agora só conta receitas)
+        
         'service_types': ServiceType.objects.all().order_by('name'),
         'barbers': User.objects.all().order_by('username'),
         'payment_methods': PAYMENT_CHOICES,
-        # Passa os parâmetros GET para o template para construir os links de exportação
+        
         'query_params': request.GET.urlencode(),
         'filter_date': request.GET.get('filter_date', '').strip(),
         'filter_month': request.GET.get('filter_month', '').strip(),
@@ -324,27 +391,64 @@ def export_cashier_csv(request):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="caixa_{timezone.now().strftime("%Y-%m-%d")}.csv"'
     
-    # Adiciona BOM para compatibilidade com Excel
     response.write('\ufeff'.encode('utf8'))
 
     writer = csv.writer(response, delimiter=';')
-    writer.writerow(['Data Pagamento', 'Cliente', 'Barbeiro', 'Serviço', 'Forma Pag.', 'Valor (R$)'])
+    writer.writerow(['Data/Hora', 'Tipo', 'Descrição', 'Barbeiro', 'Forma Pag.', 'Valor (R$)'])
 
-    services = _get_filtered_cashier_services(request)
-    # Calcula o total para adicionar no final
-    total_value = services.aggregate(total=Sum('price'))['total'] or 0
+    # Obtém Receitas e Despesas
+    services_query, expenses_query = _get_filtered_cashier_transactions(request)
+    
+    transactions_list = []
 
-    for service in services:
+    # 1. Formata Receitas
+    for s in services_query:
+        transactions_list.append({
+            'sort_time': s.payment_date,
+            'data_hora': s.payment_date.strftime('%d/%m/%Y %H:%M'),
+            'tipo': 'RECEITA',
+            'descricao': f"{s.client_name} - {', '.join([st.name for st in s.service_types.all()])}",
+            'barbeiro': s.barber.username if s.barber else 'N/A',
+            'pagamento': s.get_payment_method_display(),
+            'valor': s.price
+        })
+
+    # 2. Formata Despesas
+    for e in expenses_query:
+        transactions_list.append({
+            'sort_time': timezone.make_aware(datetime.combine(e.expense_date, datetime.min.time())),
+            'data_hora': e.expense_date.strftime('%d/%m/%Y'),
+            'tipo': 'DESPESA',
+            'descricao': e.description,
+            'barbeiro': 'N/A',
+            'pagamento': 'N/A',
+            'valor': -e.value # Valor negativo para despesas
+        })
+
+    # Ordena todas as transações (Receitas e Despesas)
+    transactions_list.sort(key=lambda x: x['sort_time'], reverse=True)
+
+    # Calcula os totais
+    total_income = services_query.aggregate(total=Sum('price'))['total'] or 0
+    total_outcome = expenses_query.aggregate(total=Sum('value'))['total'] or 0
+    final_total_value = total_income - total_outcome
+
+    # Escreve as linhas de transação
+    for t in transactions_list:
         writer.writerow([
-            service.payment_date.strftime('%d/%m/%Y %H:%M'),
-            service.client_name,
-            service.barber.username if service.barber else 'N/A',
-            ", ".join([st.name for st in service.service_types.all()]),
-            service.get_payment_method_display(),
-            str(service.price).replace('.', ',')
+            t['data_hora'],
+            t['tipo'],
+            t['descricao'],
+            t['barbeiro'],
+            t['pagamento'],
+            # Formata o valor, garantindo o sinal de menos para despesas
+            str(t['valor']).replace('.', ',') 
         ])
     
-    # Adiciona a linha de total no final do CSV
-    writer.writerow(['', '', '', '', 'Total', str(total_value).replace('.', ',')])
+    # Adiciona as linhas de resumo
+    writer.writerow([])
+    writer.writerow(['', '', '', '', 'Total Receitas', str(total_income).replace('.', ',')])
+    writer.writerow(['', '', '', '', 'Total Despesas', str(total_outcome).replace('.', ',')])
+    writer.writerow(['', '', '', '', 'Total Líquido', str(final_total_value).replace('.', ',')])
 
     return response

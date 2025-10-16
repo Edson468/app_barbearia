@@ -7,6 +7,10 @@
 <div class="flex justify-between items-center mb-6">
     <h3 class="text-2xl font-semibold text-gray-700">Relatório de Caixa</h3>
     <div>
+        <a href="{% url 'barbershop:add_expense' %}" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center mr-2">
+            <i class="fas fa-minus-circle mr-2"></i>
+            <span>Nova Despesa</span>
+        </a>
         <a href="{% url 'barbershop:export_cashier_csv' %}?{{ query_params }}" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg inline-flex items-center">
             <i class="fas fa-file-csv mr-2"></i>
             <span>Exportar para CSV</span>
@@ -57,63 +61,76 @@
     </form>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
     <div class="bg-green-500 text-white rounded-lg shadow p-6 text-center">
-        <h5 class="font-bold text-lg">Valor Total Arrecadado</h5>
+        <h5 class="font-bold text-lg">Total de Receitas (Serviços)</h5>
+        <p class="text-3xl font-extrabold">R$ {{ total_income|floatformat:2 }}</p>
+    </div>
+    <div class="bg-red-500 text-white rounded-lg shadow p-6 text-center">
+        <h5 class="font-bold text-lg">Total de Despesas</h5>
+        <p class="text-3xl font-extrabold">R$ {{ total_outcome|floatformat:2 }}</p>
+    </div>
+    <div class="{% if total_value >= 0 %}bg-blue-500{% else %}bg-red-700{% endif %} text-white rounded-lg shadow p-6 text-center">
+        <h5 class="font-bold text-lg">Total Líquido no Caixa</h5>
         <p class="text-3xl font-extrabold">R$ {{ total_value|floatformat:2 }}</p>
     </div>
-    <div class="bg-blue-500 text-white rounded-lg shadow p-6 text-center">
-        <h5 class="font-bold text-lg">Total de Serviços Pagos</h5>
-        <p class="text-3xl font-extrabold">{{ total_services }}</p>
-    </div>
 </div>
+<div class="bg-blue-500 text-white rounded-lg shadow p-3 mb-6 text-center">
+    <h5 class="font-bold text-lg">Total de Serviços Pagos: {{ total_services }}</h5>
+</div>
+
 
 <div class="bg-white rounded-lg shadow overflow-hidden">
     <div class="p-6">
-        <h5 class="text-xl font-bold text-gray-800 mb-4">Detalhes dos Serviços Pagos</h5>
+        <h5 class="text-xl font-bold text-gray-800 mb-4">Detalhes das Transações (Receitas e Despesas)</h5>
     </div>
     <div class="overflow-x-auto">
         <table class="min-w-full">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Pagamento</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrição</th> 
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Barbeiro</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Serviço</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forma Pag.</th>
                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
-                {% for service in services_today %}
-                <tr>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ service.payment_date|date:"d/m/Y H:i" }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ service.client_name }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ service.barber.username|default:"N/A" }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {% for st in service.service_types.all %}
-                            {{ st.name }}{% if not forloop.last %}, {% endif %}
-                        {% endfor %}
+                {% for transaction in transactions %}
+                <tr class="{% if transaction.is_expense %}bg-red-50 hover:bg-red-100{% else %}hover:bg-gray-50{% endif %}">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.sort_time|date:"d/m/Y H:i" }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium {% if transaction.is_expense %}text-red-600{% else %}text-green-600{% endif %}">
+                        {% if transaction.is_expense %}DESPESA{% else %}RECEITA{% endif %}
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ service.get_payment_method_display }}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">R$ {{ service.price|floatformat:2 }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ transaction.description }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.barber }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ transaction.payment_method }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium {% if transaction.is_expense %}text-red-600{% else %}text-green-600{% endif %}">
+                        R$ {{ transaction.value|floatformat:2 }}
+                    </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">Nenhum serviço pago encontrado para os filtros selecionados.</td>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">Nenhuma transação (receita ou despesa) encontrada para os filtros selecionados.</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot class="bg-gray-100">
                 <tr>
-                    <td colspan="5" class="px-6 py-4 text-right text-sm font-bold text-gray-800 uppercase">
-                        Total
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-green-600">R$ {{ total_value|floatformat:2 }}</td>
+                    <td colspan="5" class="px-6 py-4 text-right text-sm font-bold text-gray-800 uppercase">Total de Receitas</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-green-600">R$ {{ total_income|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td colspan="5" class="px-6 py-4 text-right text-sm font-bold text-gray-800 uppercase">Total de Despesas</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-red-600">R$ {{ total_outcome|floatformat:2 }}</td>
+                </tr>
+                <tr>
+                    <td colspan="5" class="px-6 py-4 text-right text-lg font-extrabold text-gray-800 uppercase">Total Líquido</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-lg font-extrabold {% if total_value >= 0 %}text-blue-600{% else %}text-red-700{% endif %}">R$ {{ total_value|floatformat:2 }}</td>
                 </tr>
             </tfoot>
         </table>
     </div>
 </div>
-
 {% endblock %}

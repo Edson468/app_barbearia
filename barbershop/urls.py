@@ -31,6 +31,9 @@ urlpatterns = [
     # Barbeiros
     path('barbers/add/', views.add_barber, name='add_barber'),
 
+    # Despesas (NOVO)
+    path('expenses/add/', views.add_expense, name='add_expense'), # Rota para adicionar despesas
+
     # Caixa e Exportação
     path('caixa/', views.daily_cashier, name='daily_cashier'),
     path('caixa/export/csv/', views.export_cashier_csv, name='export_cashier_csv'),

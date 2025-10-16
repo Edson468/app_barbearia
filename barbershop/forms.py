@@ -2,7 +2,9 @@
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
-from .models import Service, Client, ServiceType
+# Importe o novo modelo Expense
+from .models import Service, Client, ServiceType, Expense 
+
 
 class ServiceForm(forms.ModelForm):
     # Garante que o campo 'barber' seja uma lista de seleção de todos os usuários
@@ -14,7 +16,6 @@ class ServiceForm(forms.ModelForm):
 
     class Meta:
         model = Service
-        # O campo 'price' será calculado na view, não preenchido pelo usuário diretamente.
         fields = ['client_name', 'service_types', 'barber', 'discount', 'appointment_datetime']
         labels = {
             'client_name': 'Nome do Cliente',
@@ -30,18 +31,13 @@ class ServiceForm(forms.ModelForm):
             'service_type': forms.Select(attrs={'class': 'form-control'}),
             'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             
-            # CRÍTICO: Oculta os campos de pagamento
             'payment_method': forms.HiddenInput(),
             'payment_date': forms.HiddenInput(),
         }
+# ... (O método __init__ para remover campos ocultos no ServiceForm foi mantido comentado por enquanto, 
+# mas se você o descomentar, ele deve ser incluído aqui.)
+# ...
 
-    # Remove os labels dos campos ocultos no formulário
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-    #     if 'payment_method' in self.fields:
-    #         del self.fields['payment_method']
-    #     if 'payment_date' in self.fields:
-    #         del self.fields['payment_date']
 
 class ServiceTypeForm(forms.ModelForm):
     class Meta:
@@ -66,4 +62,19 @@ class BarberCreationForm(UserCreationForm):
             'first_name': 'Nome',
             'last_name': 'Sobrenome',
             'email': 'E-mail',
+        }
+
+# ----------------------------------------------------------------------
+# NOVO FORMULÁRIO: Despesas
+# ----------------------------------------------------------------------
+class ExpenseForm(forms.ModelForm):
+    """Formulário para registrar despesas operacionais da barbearia."""
+    class Meta:
+        model = Expense
+        fields = ['description', 'value', 'expense_date']
+        widgets = {
+            'description': forms.TextInput(attrs={'class': 'form-control'}),
+            'value': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            # Define o input como tipo 'date' para seleção de calendário fácil
+            'expense_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}), 
         }
