@@ -25,7 +25,13 @@ SECRET_KEY = 'django-insecure-c+m&+tw)vj3nc_vmn9epwj1b6ost4(dam_rw59xmjsi2s_m79+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver', '[::1]']
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'testserver',
+    '[::1]',
+    'barberapp.pythonanywhere.com'
+]
 
 
 # Application definition
